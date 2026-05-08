@@ -16,16 +16,34 @@ from notion_client import Client
 
 load_dotenv()
 
-NOTION_TOKEN = os.getenv("NOTION_TOKEN")
+
+def _read_secret(key: str, default: Optional[str] = None) -> Optional[str]:
+    """로컬(.env) 또는 Streamlit Cloud(st.secrets) 양쪽에서 환경 변수 읽기.
+
+    1) os.getenv (로컬 .env 또는 시스템 환경변수)
+    2) st.secrets (Streamlit Cloud 대시보드의 Secrets 설정)
+    """
+    val = os.getenv(key)
+    if val:
+        return val
+    try:
+        if hasattr(st, "secrets") and key in st.secrets:
+            return st.secrets[key]
+    except Exception:
+        pass
+    return default
+
+
+NOTION_TOKEN = _read_secret("NOTION_TOKEN")
 
 # Database IDs (URL 기반 — 사람이 보기 쉬운 ID)
-ACCOUNTS_DB_ID = os.getenv(
+ACCOUNTS_DB_ID = _read_secret(
     "NOTION_ACCOUNTS_DB", "a0e1d6ea-a31a-4576-8fa2-a9eead17d0af"
 )
-HOLDINGS_DB_ID = os.getenv(
+HOLDINGS_DB_ID = _read_secret(
     "NOTION_HOLDINGS_DB", "fb793b41-72e3-49f7-9184-c1ac3598235f"
 )
-CASHFLOW_DB_ID = os.getenv(
+CASHFLOW_DB_ID = _read_secret(
     "NOTION_CASHFLOW_DB", "3e03524a-32cb-4c6b-911a-9a943fb88f0b"
 )
 
