@@ -1,0 +1,14 @@
+[theme]
+base = "light"
+# Toss DNA palette
+primaryColor = "#0064FF"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F2F4F6"
+textColor = "#191F28"
+font = "sans serif"
+
+[server]
+runOnSave = true
+
+[browser]
+gatherUsageStats = false
