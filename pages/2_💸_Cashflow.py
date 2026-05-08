@@ -4,6 +4,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
+from lib.auth import check_password
 from lib.notion import get_cashflow_df, get_holdings_df
 from lib.sidebar import fmt_amount, render_sidebar
 from lib.style import TOSS, inject_toss_style
@@ -11,6 +12,10 @@ from lib.transform import compute_distribution_cycle, filter_active_holdings
 
 st.set_page_config(page_title="캐시플로우", page_icon="💸", layout="wide")
 inject_toss_style()
+
+if not check_password():
+    st.stop()
+
 render_sidebar()
 st.title("💸 분배금 캐시플로우")
 

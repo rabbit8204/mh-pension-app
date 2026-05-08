@@ -3,11 +3,16 @@
 import pandas as pd
 import streamlit as st
 
+from lib.auth import check_password
 from lib.sidebar import fmt_amount, render_sidebar
 from lib.style import inject_toss_style
 
 st.set_page_config(page_title="매수 가이드", page_icon="🎯", layout="wide")
 inject_toss_style()
+
+if not check_password():
+    st.stop()
+
 render_sidebar()
 st.title("🎯 매수 비중 가이드")
 st.caption(

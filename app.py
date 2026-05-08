@@ -8,6 +8,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
+from lib.auth import check_password
 from lib.notion import (
     get_accounts_df,
     get_cashflow_df,
@@ -29,6 +30,10 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 inject_toss_style()
+
+if not check_password():
+    st.stop()
+
 render_sidebar()
 
 

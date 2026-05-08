@@ -7,6 +7,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
+from lib.auth import check_password
 from lib.notion import get_accounts_df, get_holdings_df
 from lib.sidebar import fmt_amount, render_sidebar
 from lib.simulator import AccountState, compare_scenarios, project
@@ -25,6 +26,10 @@ from lib.transform import (
 
 st.set_page_config(page_title="시뮬레이터", page_icon="🔮", layout="wide")
 inject_toss_style()
+
+if not check_password():
+    st.stop()
+
 render_sidebar()
 
 st.title("🔮 What-If 시뮬레이터")
