@@ -73,6 +73,8 @@ def compute_account_kpis(accounts_df: pd.DataFrame, holdings_df: pd.DataFrame) -
         market_value = sub["Market Value"].fillna(0).sum() if "Market Value" in sub else 0
         pl = market_value - purchase_cost
         ret = (pl / purchase_cost * 100) if purchase_cost > 0 else 0
+        cash = account.get("Cash Balance") or 0
+        total_assets = market_value + cash
 
         rows.append({
             "account_name": account.get("Account Name") or "?",
@@ -82,6 +84,8 @@ def compute_account_kpis(accounts_df: pd.DataFrame, holdings_df: pd.DataFrame) -
             "n_holdings": len(sub),
             "sum_purchase_cost": purchase_cost,
             "sum_market_value": market_value,
+            "cash_balance": cash,
+            "total_assets": total_assets,
             "sum_pl": pl,
             "return_rate": ret,
         })
@@ -94,18 +98,23 @@ def compute_total_kpis(account_kpis: pd.DataFrame) -> Dict[str, float]:
         return {
             "total_purchase": 0,
             "total_market_value": 0,
+            "total_cash": 0,
+            "total_assets": 0,
             "total_pl": 0,
             "weighted_return": 0,
             "monthly_contribution_total": 0,
         }
     total_purchase = account_kpis["sum_purchase_cost"].sum()
     total_market = account_kpis["sum_market_value"].sum()
+    total_cash = account_kpis["cash_balance"].sum() if "cash_balance" in account_kpis else 0
     total_pl = total_market - total_purchase
     weighted_ret = (total_pl / total_purchase * 100) if total_purchase > 0 else 0
     monthly = account_kpis["monthly_contribution"].sum()
     return {
         "total_purchase": total_purchase,
         "total_market_value": total_market,
+        "total_cash": total_cash,
+        "total_assets": total_market + total_cash,
         "total_pl": total_pl,
         "weighted_return": weighted_ret,
         "monthly_contribution_total": monthly,

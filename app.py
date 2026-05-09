@@ -69,27 +69,31 @@ totals = compute_total_kpis(account_kpis)
 
 # ─── KPI Cards ─────────────────────────────────────────────────────────────
 st.markdown("### 📊 핵심 지표")
-k1, k2, k3, k4 = st.columns(4)
+k1, k2, k3, k4, k5 = st.columns(5)
 
 k1.metric(
-    "총 평가금액",
-    fmt_amount(totals["total_market_value"]),
+    "총 자산 (평가 + 현금)",
+    fmt_amount(totals["total_assets"]),
     f"{fmt_amount(totals['total_pl'])} 손익",
 )
 k2.metric(
+    "종목 평가금액",
+    fmt_amount(totals["total_market_value"]),
+)
+k3.metric(
+    "현금성 자산",
+    fmt_amount(totals["total_cash"]),
+    "매매 대기 자금",
+)
+k4.metric(
     "자산 가중 수익률",
     fmt_pct(totals["weighted_return"]),
     f"목표 20-30% {'✓' if 20 <= totals['weighted_return'] <= 30 else ('↑' if totals['weighted_return'] < 20 else '↓')}",
 )
-k3.metric(
-    "월 신규 입금 합계",
+k5.metric(
+    "월 신규 입금",
     fmt_amount(totals["monthly_contribution_total"]),
-    "DC 120 + IRP 34 + 연저 60 + ISA 30",
-)
-k4.metric(
-    "총 매입원금",
-    fmt_amount(totals["total_purchase"]),
-    "(투입 자본)",
+    "DC + IRP + 연저 + ISA",
 )
 
 # ─── Account KPI table ─────────────────────────────────────────────────────
@@ -99,6 +103,8 @@ if not account_kpis.empty:
     display["월 입금"] = display["monthly_contribution"].apply(fmt_amount)
     display["매입원금"] = display["sum_purchase_cost"].apply(fmt_amount)
     display["평가금액"] = display["sum_market_value"].apply(fmt_amount)
+    display["현금"] = display["cash_balance"].apply(fmt_amount)
+    display["총 자산"] = display["total_assets"].apply(fmt_amount)
     display["평가손익"] = display["sum_pl"].apply(fmt_amount)
     display["수익률"] = display["return_rate"].apply(fmt_pct)
     display = display[
@@ -110,6 +116,8 @@ if not account_kpis.empty:
             "월 입금",
             "매입원금",
             "평가금액",
+            "현금",
+            "총 자산",
             "평가손익",
             "수익률",
         ]
