@@ -146,7 +146,27 @@ def _extract_property(prop: Dict[str, Any]) -> Any:
         return prop.get("email")
     if ptype == "files":
         return [f.get("name") for f in prop.get("files", [])]
+    if ptype == "formula":
+        f = prop.get("formula") or {}
+        ftype = f.get("type")
+        if ftype == "number":
+            return f.get("number")
+        if ftype == "string":
+            return f.get("string")
+        if ftype == "boolean":
+            return f.get("boolean")
+        if ftype == "date":
+            d = f.get("date")
+            return d.get("start") if d else None
+        return None
     return None
+
+
+def _prefer_auto(auto_val: Any, manual_val: Any) -> Any:
+    """Auto formula 컬럼이 의미있는 값이면 그것, 아니면 manual NUMBER 컬럼."""
+    if auto_val is not None and auto_val != 0:
+        return auto_val
+    return manual_val if manual_val is not None else 0
 
 
 def _parse_pages(pages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -156,8 +176,22 @@ def _parse_pages(pages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             "_page_id": page["id"],
             "_url": page.get("url"),
         }
-        for name, prop in page.get("properties", {}).items():
+        props = page.get("properties", {})
+        for name, prop in props.items():
             row[name] = _extract_property(prop)
+        # Holdings: Auto formula 컬럼이 있으면 manual 컬럼 덮어쓰기 (단, Auto가 의미있을 때만)
+        if "Auto Purchase Cost" in row:
+            row["Purchase Cost"] = _prefer_auto(
+                row.get("Auto Purchase Cost"), row.get("Purchase Cost")
+            )
+        if "Auto Market Value" in row:
+            row["Market Value"] = _prefer_auto(
+                row.get("Auto Market Value"), row.get("Market Value")
+            )
+        if "Auto Return Rate" in row:
+            row["Return Rate"] = _prefer_auto(
+                row.get("Auto Return Rate"), row.get("Return Rate")
+            )
         rows.append(row)
     return rows
 
