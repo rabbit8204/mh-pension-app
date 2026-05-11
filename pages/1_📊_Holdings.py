@@ -4,7 +4,7 @@ import plotly.express as px
 import streamlit as st
 
 from lib.auth import check_password
-from lib.notion import get_accounts_df, get_holdings_df
+from lib.notion import get_accounts_df, get_holdings_for_period
 from lib.sidebar import fmt_amount, render_sidebar
 from lib.style import TOSS, inject_toss_style
 from lib.transform import filter_active_holdings
@@ -16,10 +16,13 @@ if not check_password():
     st.stop()
 
 render_sidebar()
+period = st.session_state.get("period", "최신")
+period_label = "현재 Holdings" if period == "최신" else f"📆 {period} 스냅샷"
 st.title("📊 보유 종목")
+st.caption(f"시점: **{period_label}**")
 
 try:
-    holdings_df = get_holdings_df()
+    holdings_df = get_holdings_for_period(period)
     accounts_df = get_accounts_df()
 except Exception as exc:
     st.error(f"노션 연결 실패: {exc}")

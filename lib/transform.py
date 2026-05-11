@@ -273,6 +273,65 @@ def compute_account_nav_growth(
     return pd.DataFrame(rows)
 
 
+def find_sell_candidates(
+    holdings_df: pd.DataFrame,
+    accounts_df: pd.DataFrame,
+    profit_threshold: float = 30.0,
+) -> pd.DataFrame:
+    """S 등급이면서 수익률이 threshold 이상인 종목 식별.
+
+    매도 검토 알림용 — 액티브 운용 (수익률 30% 초과 시 자본 회전).
+    """
+    if holdings_df.empty:
+        return pd.DataFrame()
+    h = filter_active_holdings(holdings_df).copy()
+    if "Buy Tier" not in h.columns or "Return Rate" not in h.columns:
+        return pd.DataFrame()
+    s_tier = h[(h["Buy Tier"] == "S") & (h["Return Rate"].fillna(0) >= profit_threshold)].copy()
+    if s_tier.empty:
+        return s_tier
+
+    # Map account name
+    acc_map = {}
+    if not accounts_df.empty and "_page_id" in accounts_df.columns:
+        for _, r in accounts_df.iterrows():
+            acc_map[r["_page_id"].replace("-", "")] = r.get("Account Name", "?")
+
+    def _acc_name(account_field):
+        if not account_field:
+            return "?"
+        if isinstance(account_field, list):
+            for ref in account_field:
+                s = str(ref).replace("-", "")
+                for k, v in acc_map.items():
+                    if k in s:
+                        return v
+        return "?"
+
+    s_tier["account"] = s_tier["Account"].apply(_acc_name) if "Account" in s_tier.columns else "?"
+    return s_tier[["Symbol", "account", "Return Rate", "Market Value", "Period Dividend"]].sort_values(
+        "Return Rate", ascending=False
+    )
+
+
+def compute_monthly_dividend_progress(
+    holdings_df: pd.DataFrame, target: float = 3_000_000
+) -> dict:
+    """현재 holdings의 월 분배금 누적 + 목표 진척률 계산."""
+    active = filter_active_holdings(holdings_df)
+    if active.empty:
+        return {"current": 0, "target": target, "progress_pct": 0, "gap": target}
+    annual = active.apply(annualize_period_dividend, axis=1).sum() if not active.empty else 0
+    monthly = annual / 12
+    progress = (monthly / target * 100) if target > 0 else 0
+    return {
+        "current": monthly,
+        "target": target,
+        "progress_pct": progress,
+        "gap": max(0, target - monthly),
+    }
+
+
 def safety_asset_ratio(holdings_df: pd.DataFrame, account_id_short: str) -> float:
     """Calculate the % of safety assets (채권혼합/TDF) in a given account."""
     if holdings_df.empty:

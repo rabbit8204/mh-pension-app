@@ -5,7 +5,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from lib.auth import check_password
-from lib.notion import get_cashflow_df, get_holdings_df
+from lib.notion import get_cashflow_df, get_holdings_for_period
 from lib.sidebar import fmt_amount, render_sidebar
 from lib.style import TOSS, inject_toss_style
 from lib.transform import compute_distribution_cycle, filter_active_holdings
@@ -17,11 +17,14 @@ if not check_password():
     st.stop()
 
 render_sidebar()
+period = st.session_state.get("period", "최신")
+period_label = "현재 Holdings" if period == "최신" else f"📆 {period} 스냅샷"
 st.title("💸 분배금 캐시플로우")
+st.caption(f"시점: **{period_label}**")
 
 try:
     cashflow_df = get_cashflow_df()
-    holdings_df = get_holdings_df()
+    holdings_df = get_holdings_for_period(period)
 except Exception as exc:
     st.error(f"노션 연결 실패: {exc}")
     st.stop()

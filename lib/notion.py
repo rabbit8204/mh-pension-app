@@ -46,6 +46,10 @@ HOLDINGS_DB_ID = _read_secret(
 CASHFLOW_DB_ID = _read_secret(
     "NOTION_CASHFLOW_DB", "3e03524a-32cb-4c6b-911a-9a943fb88f0b"
 )
+# Holdings Snapshots — monthly time-series of Holdings (created 2026-05-09)
+SNAPSHOTS_DB_ID = _read_secret(
+    "NOTION_SNAPSHOTS_DB", "4a5c9648-52e2-40b5-a390-a7aa9bbe041b"
+)
 
 # Data Source IDs (Notion 2025-09 API에서 query에 사용)
 # 노션이 한 데이터베이스 안에 여러 data source(=collection)를 둘 수 있게 변경.
@@ -53,6 +57,7 @@ CASHFLOW_DB_ID = _read_secret(
 ACCOUNTS_DS_ID_FALLBACK = "642b8023-192e-4eac-a58f-38eae0f240ef"
 HOLDINGS_DS_ID_FALLBACK = "ea2a5bde-8e94-4296-875f-d4ef9baaef45"
 CASHFLOW_DS_ID_FALLBACK = "74c74680-17cc-41a6-beba-19f552b366e3"
+SNAPSHOTS_DS_ID_FALLBACK = "91cf87de-86cc-4cc1-aeb6-6ac96b638d54"
 
 
 def get_client() -> Client:
@@ -220,8 +225,61 @@ def get_cashflow_df() -> pd.DataFrame:
     return df
 
 
+@st.cache_data(ttl=300)
+def get_snapshots_df(snapshot_month: Optional[str] = None) -> pd.DataFrame:
+    """Fetch Holdings Snapshots for a given month (e.g. '2026-05').
+
+    None → 모든 스냅샷 (월별 비교용 데이터).
+    """
+    client = get_client()
+    ds_id = _resolve_data_source_id(SNAPSHOTS_DB_ID, SNAPSHOTS_DS_ID_FALLBACK)
+    rows: List[Dict[str, Any]] = []
+    cursor: Optional[str] = None
+    while True:
+        kwargs: Dict[str, Any] = {"data_source_id": ds_id, "page_size": 100}
+        if snapshot_month:
+            kwargs["filter"] = {
+                "property": "Snapshot Month",
+                "rich_text": {"equals": snapshot_month},
+            }
+        if cursor:
+            kwargs["start_cursor"] = cursor
+        resp = client.data_sources.query(**kwargs)
+        rows.extend(resp.get("results", []))
+        if not resp.get("has_more"):
+            break
+        cursor = resp.get("next_cursor")
+
+    parsed = _parse_pages(rows)
+    df = pd.DataFrame(parsed)
+    return df
+
+
+@st.cache_data(ttl=300)
+def list_snapshot_months() -> List[str]:
+    """모든 스냅샷에서 unique Snapshot Month 추출 (정렬 desc)."""
+    df = get_snapshots_df()  # all snapshots
+    if df.empty or "Snapshot Month" not in df.columns:
+        return []
+    months = sorted(set(df["Snapshot Month"].dropna().astype(str).tolist()), reverse=True)
+    return [m for m in months if m]
+
+
+def get_holdings_for_period(snapshot_month: Optional[str]) -> pd.DataFrame:
+    """현재 시점 또는 과거 스냅샷의 Holdings를 통일된 schema로 반환.
+
+    snapshot_month가 None / '최신' / 'latest' → live Holdings DB
+    그 외 → Holdings Snapshots에서 해당 월 row 반환
+    """
+    if not snapshot_month or snapshot_month in ("최신", "latest", "current"):
+        return get_holdings_df()
+    return get_snapshots_df(snapshot_month)
+
+
 def clear_cache() -> None:
     """Force re-fetch on next call."""
     get_accounts_df.clear()
     get_holdings_df.clear()
     get_cashflow_df.clear()
+    get_snapshots_df.clear()
+    list_snapshot_months.clear()

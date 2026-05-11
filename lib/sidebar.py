@@ -2,7 +2,7 @@
 
 import streamlit as st
 
-from lib.notion import clear_cache
+from lib.notion import clear_cache, list_snapshot_months
 
 
 CURRENCY_DIVISORS = {
@@ -13,7 +13,7 @@ CURRENCY_DIVISORS = {
 
 
 def render_sidebar() -> None:
-    """Persistent sidebar: 단위 / 새로고침 / 도움말."""
+    """Persistent sidebar: 단위 / 시점 / 새로고침 / 도움말."""
     with st.sidebar:
         st.markdown("### ⚙️ 도구")
 
@@ -27,6 +27,21 @@ def render_sidebar() -> None:
         )
         st.session_state["unit_divisor"] = CURRENCY_DIVISORS[unit]
         st.session_state["unit_label"] = unit
+
+        # 시점 선택 (최신 / 과거 스냅샷)
+        try:
+            past_months = list_snapshot_months()
+        except Exception:
+            past_months = []
+        period_options = ["최신"] + past_months
+        period = st.selectbox(
+            "📆 시점",
+            options=period_options,
+            index=0,
+            key="period_select",
+            help="최신 = 현재 노션 Holdings DB. 과거 월 = Holdings Snapshots에 저장된 월별 시점.",
+        )
+        st.session_state["period"] = period
 
         # Refresh
         if st.button("🔄 노션 데이터 새로고침", use_container_width=True):

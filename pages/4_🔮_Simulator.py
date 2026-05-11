@@ -8,7 +8,11 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from lib.auth import check_password
-from lib.notion import get_accounts_df, get_holdings_df
+from lib.buy_tier import (
+    DIVIDEND_MONTHLY_TARGET,
+    PROFIT_TAKE_THRESHOLD,
+)
+from lib.notion import get_accounts_df, get_holdings_for_period
 from lib.sidebar import fmt_amount, render_sidebar
 from lib.simulator import AccountState, compare_scenarios, project
 from lib.style import (
@@ -22,6 +26,8 @@ from lib.transform import (
     DEFAULT_NAV_GROWTH_BY_CLASS,
     compute_account_nav_growth,
     compute_account_yields,
+    compute_monthly_dividend_progress,
+    find_sell_candidates,
 )
 
 st.set_page_config(page_title="시뮬레이터", page_icon="🔮", layout="wide")
@@ -40,9 +46,10 @@ st.caption(
 )
 
 # ─── Data load ─────────────────────────────────────────────────────────────
+period = st.session_state.get("period", "최신")
 try:
     accounts_df = get_accounts_df()
-    holdings_df = get_holdings_df()
+    holdings_df = get_holdings_for_period(period)
 except Exception as exc:
     st.error(f"노션 연결 실패: {exc}")
     st.stop()
@@ -463,5 +470,109 @@ with st.expander("⚙️ 시뮬레이션 가정 (모델 설명)"):
 **v1.3 개선 예정**:
 - Buy Strategy v2.0 비중 따라 새 입금의 정확한 yield/growth 자동 계산
 - 시장 사이클별 NAV 성장률 시나리오 (강세/약세/혼란장)
+"""
+    )
+
+# ─── 💰 자본 회전 시뮬레이션 (S 매도 → A/B 매수) ──────────────────────────
+st.markdown("---")
+st.markdown("### 💰 자본 회전 시뮬레이션 — S 등급 매도 → 분배 종목 환매")
+st.caption(
+    f"**액티브 운용 시뮬**: 수익률 {PROFIT_TAKE_THRESHOLD:.0f}% 초과한 S 등급 종목을 매도하고, "
+    f"그 자본을 A/B 등급(분배 driver) 종목에 재배치하면 월 분배금이 얼마나 늘어날지 추정."
+)
+
+sell_candidates_df = find_sell_candidates(holdings_df, accounts_df, PROFIT_TAKE_THRESHOLD)
+div_now = compute_monthly_dividend_progress(holdings_df, DIVIDEND_MONTHLY_TARGET)
+
+if sell_candidates_df.empty:
+    st.info(
+        f"현재 S 등급 + 수익률 {PROFIT_TAKE_THRESHOLD:.0f}% 초과 종목이 없습니다. "
+        "회전 시뮬 대상 없음."
+    )
+else:
+    st.markdown(f"**매도 후보 ({len(sell_candidates_df)}건)**")
+
+    # 매도 선택
+    options = []
+    for idx, row in sell_candidates_df.iterrows():
+        sym = row["Symbol"]
+        acc = row["account"]
+        ret = row["Return Rate"]
+        mv = row["Market Value"]
+        options.append(f"{sym} ({acc}) — +{ret:.1f}% / {fmt_amount(mv)}")
+
+    selected = st.multiselect(
+        "매도할 종목 선택 (체크박스)",
+        options=options,
+        default=options,  # 기본은 모두 선택
+        help="선택한 종목들을 매도하고 그 자본을 A/B 등급 평균 yield로 재배치한다고 가정",
+    )
+
+    # 평균 A/B 등급 yield 계산
+    active = filter_active_holdings(holdings_df) if not holdings_df.empty else pd.DataFrame()
+    ab_holdings = active[active["Buy Tier"].isin(["A", "B"])] if "Buy Tier" in active.columns else pd.DataFrame()
+    if not ab_holdings.empty and "Market Value" in ab_holdings.columns:
+        ab_mv = ab_holdings["Market Value"].fillna(0).sum()
+        ab_annual_div = ab_holdings.apply(
+            lambda r: (r.get("Period Dividend") or 0) * (
+                12 if r.get("Pay Frequency") == "Monthly"
+                else 4 if r.get("Pay Frequency") == "Quarterly"
+                else 1 if r.get("Pay Frequency") == "Annual" else 0
+            ),
+            axis=1,
+        ).sum()
+        ab_yield = (ab_annual_div / ab_mv * 100) if ab_mv > 0 else 0
+    else:
+        ab_yield = 6.0  # default
+
+    custom_yield = st.slider(
+        "A/B 등급 평균 yield (재배치 가정)",
+        min_value=2.0,
+        max_value=15.0,
+        value=float(round(ab_yield, 1)),
+        step=0.1,
+        help=f"현재 보유 A/B 등급 가중 평균 yield = {ab_yield:.2f}%. 수동 조정 가능.",
+    )
+
+    # 시뮬레이션 계산
+    selected_rows = sell_candidates_df.iloc[
+        [i for i, opt in enumerate(options) if opt in selected]
+    ]
+    sell_total_mv = selected_rows["Market Value"].fillna(0).sum()
+    sell_total_div = selected_rows["Period Dividend"].fillna(0).sum() * 12  # 연환산 (월배당 가정)
+
+    # 회전 후
+    new_monthly_div_from_rotation = (sell_total_mv * custom_yield / 100) / 12
+    delta_monthly = new_monthly_div_from_rotation - (sell_total_div / 12)
+
+    new_total_monthly = div_now["current"] + delta_monthly
+    new_progress_pct = (new_total_monthly / DIVIDEND_MONTHLY_TARGET * 100) if DIVIDEND_MONTHLY_TARGET > 0 else 0
+
+    col1, col2, col3 = st.columns(3)
+    col1.metric(
+        "매도 자본",
+        fmt_amount(sell_total_mv),
+        f"{len(selected_rows)}개 종목",
+    )
+    col2.metric(
+        "월 분배 변동",
+        f"{'+' if delta_monthly >= 0 else ''}{fmt_amount(delta_monthly)}",
+        f"{custom_yield:.1f}% yield 가정",
+    )
+    col3.metric(
+        "재배치 후 월 분배",
+        fmt_amount(new_total_monthly),
+        f"{new_progress_pct - div_now['progress_pct']:+.1f}%p (목표 대비)",
+    )
+
+    st.markdown(
+        f"""
+**시뮬레이션 결과 요약**:
+- 매도 자본: **{fmt_amount(sell_total_mv)}**
+- 현재 월 분배: **{fmt_amount(div_now['current'])}** ({div_now['progress_pct']:.1f}% 진척)
+- 재배치 후 월 분배 (예상): **{fmt_amount(new_total_monthly)}** ({new_progress_pct:.1f}% 진척)
+- 목표 갭: **{fmt_amount(max(0, DIVIDEND_MONTHLY_TARGET - new_total_monthly))}** → {'🎉 목표 달성' if new_total_monthly >= DIVIDEND_MONTHLY_TARGET else 'A/B 비중 추가 강화 필요'}
+
+⚠️ **주의**: 이 시뮬은 추정치입니다. 실제 매도/매수 시 수수료, 세금, 슬리피지, 분배율 변동 등 고려 필요.
 """
     )

@@ -4,6 +4,13 @@ import pandas as pd
 import streamlit as st
 
 from lib.auth import check_password
+from lib.buy_tier import (
+    BUY_TIERS,
+    DIVIDEND_MONTHLY_TARGET,
+    PROFIT_TAKE_THRESHOLD,
+    TARGET_RETURN_LOWER,
+    TARGET_RETURN_UPPER,
+)
 from lib.sidebar import fmt_amount, render_sidebar
 from lib.style import inject_toss_style
 
@@ -19,6 +26,41 @@ st.caption(
     "Buy Strategy v2.0 기반 — 비중대로 종목별 매수 금액 자동 계산. "
     "분배 흐름 미래 예측은 **[🔮 Simulator]** 페이지 참고."
 )
+
+# ─── 운용 철학 + Buy Tier 정의 ─────────────────────────────────────────────
+with st.expander("📚 운용 철학 + Buy Tier 등급 정의 (클릭하여 펼치기)", expanded=False):
+    st.markdown(
+        f"""
+**🎯 운용 철학**
+
+| 우선순위 | 목표 | 액션 |
+|:-:|---|---|
+| 1순위 | 월 분배금 ≥ **{DIVIDEND_MONTHLY_TARGET:,}원** | A, B 등급 종목 적극 매수 |
+| 2순위 | 가중 수익률 **{TARGET_RETURN_LOWER:.0f}~{TARGET_RETURN_UPPER:.0f}%** 유지 | S 등급으로 수익률 견인 |
+| 액티브 | 수익률 **{PROFIT_TAKE_THRESHOLD:.0f}% 초과** 시 매도 | S → A/B로 자본 회전 |
+
+**📋 Buy Tier 11등급 — 역할 기반 분류**
+"""
+    )
+    tier_rows = []
+    for t in BUY_TIERS:
+        tier_rows.append({
+            "등급": t["code"],
+            "라벨": t["label"],
+            "역할": t["korean"],
+            "정의": t["definition"],
+            "트리거 / 액션": t["trigger"],
+        })
+    st.dataframe(
+        pd.DataFrame(tier_rows),
+        use_container_width=True,
+        hide_index=True,
+    )
+    st.caption(
+        "💡 **핵심**: 종목의 '포트폴리오 내 역할'을 표현. "
+        "S = 수익률 driver / A·B = 분배금 driver / C = 안전자산 / D·W·X = 관찰·금지 / 매도 사이클 4단계."
+    )
+
 
 # Buy ratios per account (v2.0 confirmed)
 BUY_RATIOS = {
